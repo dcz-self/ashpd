@@ -3,15 +3,13 @@ use std::sync::Arc;
 use adw::subclass::prelude::*;
 use ashpd::{
     desktop::{
-        inhibit::{InhibitFlags, InhibitProxy, SessionState},
+        global_shortcuts::{GlobalShortcuts, NewShortcut},
         Session,
     },
-    enumflags2::BitFlags,
     WindowIdentifier,
 };
-use futures_util::{lock::Mutex, stream::StreamExt};
 use gtk::{glib, prelude::*};
-
+use futures_util::lock::Mutex;
 use crate::widgets::{PortalPage, PortalPageImpl};
 
 mod imp {
@@ -21,7 +19,7 @@ mod imp {
     #[template(resource = "/com/belmoussaoui/ashpd/demo/global_shortcuts.ui")]
     pub struct GlobalShortcutsPage {
         #[template_child]
-        pub reason: TemplateChild<adw::EntryRow>,
+        pub shortcuts: TemplateChild<adw::EntryRow>,
         #[template_child]
         pub response_group: TemplateChild<adw::PreferencesGroup>,
         #[template_child]
@@ -44,12 +42,12 @@ mod imp {
         fn class_init(klass: &mut Self::Class) {
             klass.bind_template();
 
-            klass.install_action_async("inhibit.start_session", None, |page, _, _| async move {
+            klass.install_action_async("global_shortcuts.start_session", None, |page, _, _| async move {
                 if let Err(err) = page.start_session().await {
-                    tracing::error!("Failed to inhibit {}", err);
+                    tracing::error!("Failed to request {}", err);
                 }
             });
-            klass.install_action_async("inhibit.stop", None, |page, _, _| async move {
+            klass.install_action_async("global_shortcuts.stop", None, |page, _, _| async move {
                 page.stop().await;
             });
         }
@@ -61,7 +59,7 @@ mod imp {
     impl ObjectImpl for GlobalShortcutsPage {
         fn constructed(&self) {
             self.parent_constructed();
-            self.obj().action_set_enabled("inhibit.stop", false);
+            self.obj().action_set_enabled("global_shortcuts.stop", false);
         }
     }
     impl WidgetImpl for GlobalShortcutsPage {}
@@ -75,40 +73,26 @@ glib::wrapper! {
 }
 
 impl GlobalShortcutsPage {
-    fn inhibit_flags(&self) -> BitFlags<InhibitFlags> {
-        let imp = self.imp();
-        let mut flags = BitFlags::empty();
-
-        if imp.user_switch_check.is_active() {
-            flags.insert(InhibitFlags::UserSwitch);
-        }
-        if imp.suspend_check.is_active() {
-            flags.insert(InhibitFlags::Suspend);
-        }
-        if imp.idle_check.is_active() {
-            flags.insert(InhibitFlags::Idle);
-        }
-        if imp.logout_check.is_active() {
-            flags.insert(InhibitFlags::Logout);
-        }
-
-        flags
-    }
-
     async fn start_session(&self) -> ashpd::Result<()> {
         let root = self.native().unwrap();
         let imp = self.imp();
         let identifier = WindowIdentifier::from_native(&root).await;
-        let reason = imp.reason.text();
-        let flags = self.inhibit_flags();
+        let shortcuts = imp.shortcuts.text();
+        let shortcuts: Vec<_> = shortcuts.as_str().split(' ')
+            .map(|desc| {
+                NewShortcut::new(desc, "")
+            }).collect();
 
-        let proxy = InhibitProxy::new().await?;
-        let monitor = proxy.create_monitor(&identifier).await?;
-
-        imp.session.lock().await.replace(monitor);
-        self.action_set_enabled("inhibit.stop", true);
-        self.action_set_enabled("inhibit.start_session", false);
-
+        let global_shortcuts = GlobalShortcuts::new().await?;
+        println!("New");
+        let session = global_shortcuts.create_session().await?;
+        println!("created");
+        global_shortcuts.bind_shortcuts(&session, &shortcuts[..], &identifier).await?;
+        println!("bound");
+        imp.session.lock().await.replace(session);
+        self.action_set_enabled("global_shortcuts.stop", true);
+        self.action_set_enabled("global_shortcuts.start_session", false);
+/*
         let mut state = proxy.receive_state_changed().await?;
         match state
             .next()
@@ -119,7 +103,7 @@ impl GlobalShortcutsPage {
             SessionState::Running => tracing::info!("Session running"),
             SessionState::QueryEnd => {
                 tracing::info!("Session: query end");
-                proxy.inhibit(&identifier, flags, &reason).await?;
+                proxy.inhibit(&identifier, flags, &shortcuts).await?;
                 if let Some(session) = imp.session.lock().await.as_ref() {
                     proxy.query_end_response(session).await?;
                 }
@@ -127,14 +111,14 @@ impl GlobalShortcutsPage {
             SessionState::Ending => {
                 tracing::info!("Ending the session");
             }
-        }
+        }*/
         Ok(())
     }
 
     async fn stop(&self) {
         let imp = self.imp();
-        self.action_set_enabled("inhibit.stop", false);
-        self.action_set_enabled("inhibit.start_session", true);
+        self.action_set_enabled("global_shortcuts.stop", false);
+        self.action_set_enabled("global_shortcuts.start_session", true);
         if let Some(session) = imp.session.lock().await.take() {
             let _ = session.close().await;
         }

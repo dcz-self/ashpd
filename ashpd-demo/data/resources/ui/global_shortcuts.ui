@@ -11,10 +11,10 @@
             <child>
               <object class="AdwPreferencesGroup">
                 <property name="title" translatable="yes">Global Shortcuts</property>
-                <property name="description" translatable="yes">Sets GlobalShortcuts on org.freedesktop.portal.GlobalShortcuts</property>
+                <property name="description" translatable="yes">Space-separated list of shortcuts to request</property>
                 <child>
-                  <object class="AdwEntryRow" id="reason">
-                    <property name="title" translatable="yes">Reason</property>
+                  <object class="AdwEntryRow" id="shortcuts">
+                    <property name="title" translatable="yes">Shortcuts</property>
                   </object>
                 </child>
               </object>
@@ -76,7 +76,7 @@
                     <property name="label" translatable="yes">_Start Session</property>
                     <property name="use-underline">True</property>
                     <property name="halign">start</property>
-                    <property name="action-name">inhibit.start_session</property>
+                    <property name="action-name">global_shortcuts.start_session</property>
                     <style>
                       <class name="pill" />
                       <class name="suggested-action" />
@@ -89,7 +89,7 @@
                     <property name="use-underline">True</property>
                     <property name="halign">start</property>
                     <property name="sensitive">False</property>
-                    <property name="action-name">inhibit.stop</property>
+                    <property name="action-name">global_shortcuts.stop</property>
                     <property name="halign">end</property>
                     <property name="hexpand">True</property>
                     <style>
