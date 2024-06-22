@@ -3,14 +3,18 @@ use std::sync::Arc;
 use adw::subclass::prelude::*;
 use ashpd::{
     desktop::{
-        global_shortcuts::{GlobalShortcuts, NewShortcut},
+        global_shortcuts::{Activated, Deactivated, ShortcutsChanged, GlobalShortcuts, NewShortcut},
         ResponseError,
         Session,
     },
     WindowIdentifier,
 };
 use gtk::{glib, prelude::*};
-use futures_util::lock::Mutex;
+use futures_util::{
+    future::{AbortHandle, Abortable},
+    lock::Mutex,
+    stream::{select_all, Stream, StreamExt},
+};
 use crate::widgets::{PortalPage, PortalPageImpl};
 
 mod imp {
@@ -26,8 +30,13 @@ mod imp {
         #[template_child]
         pub session_state_label: TemplateChild<gtk::Label>,
         #[template_child]
+        pub activations_group: TemplateChild<adw::PreferencesGroup>,
+        #[template_child]
+        pub activations_label: TemplateChild<gtk::Label>,
+        #[template_child]
         pub shortcuts_status_label: TemplateChild<gtk::Label>,
         pub session: Arc<Mutex<Option<Session<'static>>>>,
+        pub abort_handle: Arc<Mutex<Option<AbortHandle>>>,
     }
 
     #[glib::object_subclass]
@@ -86,11 +95,8 @@ impl GlobalShortcutsPage {
         match shortcuts {
             Some(shortcuts) => {
                 let global_shortcuts = GlobalShortcuts::new().await?;
-                println!("New");
                 let session = global_shortcuts.create_session().await?;
-                println!("created");
                 let request = global_shortcuts.bind_shortcuts(&session, &shortcuts[..], &identifier).await?;
-                println!("bound");
                 imp.response_group.set_visible(true);
                 let response = request.response();
                 imp.session_state_label.set_text(
@@ -101,11 +107,66 @@ impl GlobalShortcutsPage {
                         Err(e) => format!("{}", e),
                     }
                 );
+                imp.activations_group.set_visible(response.is_ok());
+                self.action_set_enabled("global_shortcuts.stop", response.is_ok());
+                self.action_set_enabled("global_shortcuts.start_session", !response.is_ok());
                 if let Ok(resp) = response {
                     dbg!(resp);
                     imp.session.lock().await.replace(session);
-                    self.action_set_enabled("global_shortcuts.stop", true);
-                    self.action_set_enabled("global_shortcuts.start_session", false);
+                    loop {
+                        if imp.session.lock().await.is_none() {
+                            break;
+                        }
+
+                        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+                        let future = Abortable::new(
+                            async {
+                                enum Event {
+                                    Activated(Activated),
+                                    Deactivated(Deactivated),
+                                    ShortcutsChanged(ShortcutsChanged),
+                                }
+
+                                let Ok(activated_stream) = global_shortcuts.receive_activated().await
+                                else {
+                                    return;
+                                };
+                                let Ok(deactivated_stream) = global_shortcuts.receive_deactivated().await
+                                else {
+                                    return;
+                                };
+                                let Ok(changed_stream) = global_shortcuts.receive_shortcuts_changed().await
+                                else {
+                                    return;
+                                };
+
+                                let bact: Box<dyn Stream<Item=Event> + Unpin> = Box::new(activated_stream.map(Event::Activated));
+                                let bdeact: Box<dyn Stream<Item=Event> + Unpin> = Box::new(deactivated_stream.map(Event::Deactivated));
+                                let bchg: Box<dyn Stream<Item=Event> + Unpin> = Box::new(changed_stream.map(Event::ShortcutsChanged));
+
+                                let mut events = select_all([
+                                    bact, bdeact, bchg,
+                                ]);
+
+                                while let Some(event) = events.next().await {
+                                    match event {
+                                        Event::Activated(activation) => {
+                                            self.on_activated(activation);
+                                        },
+                                        Event::Deactivated(deactivation) => {
+                                            self.on_deactivated(deactivation);
+                                        },
+                                        Event::ShortcutsChanged(change) => {
+                                            self.on_changed(change);
+                                        },
+                                    }
+                                }
+                            },
+                            abort_registration,
+                        );
+                        imp.abort_handle.lock().await.replace(abort_handle);
+                        let _ = future.await;
+                    }
                 };
             }
             _ => {}
@@ -137,8 +198,24 @@ impl GlobalShortcutsPage {
         let imp = self.imp();
         self.action_set_enabled("global_shortcuts.stop", false);
         self.action_set_enabled("global_shortcuts.start_session", true);
+
+        if let Some(abort_handle) = self.imp().abort_handle.lock().await.take() {
+            abort_handle.abort();
+        }
+
         if let Some(session) = imp.session.lock().await.take() {
             let _ = session.close().await;
         }
+    }
+
+    fn on_activated(&self, activation: Activated) {
+        dbg!(activation);
+    }
+
+    fn on_deactivated(&self, deactivation: Deactivated) {
+        dbg!(deactivation);
+    }
+    fn on_changed(&self, change: ShortcutsChanged) {
+        dbg!(change);
     }
 }
