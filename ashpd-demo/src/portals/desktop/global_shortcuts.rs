@@ -1,9 +1,9 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use adw::subclass::prelude::*;
 use ashpd::{
     desktop::{
-        global_shortcuts::{Activated, Deactivated, ShortcutsChanged, GlobalShortcuts, NewShortcut},
+        global_shortcuts::{Activated, Deactivated, ShortcutsChanged, GlobalShortcuts, NewShortcut, Shortcut},
         ResponseError,
         Session,
     },
@@ -16,6 +16,12 @@ use futures_util::{
     stream::{select_all, Stream, StreamExt},
 };
 use crate::widgets::{PortalPage, PortalPageImpl};
+
+#[derive(Debug, Clone)]
+struct RegisteredShortcut {
+    id: String,
+    activation: String,
+}
 
 mod imp {
     use super::*;
@@ -37,7 +43,9 @@ mod imp {
         pub shortcuts_status_label: TemplateChild<gtk::Label>,
         pub session: Arc<Mutex<Option<Session<'static>>>>,
         pub abort_handle: Arc<Mutex<Option<AbortHandle>>>,
-        pub activations: Arc<Mutex<Vec<String>>>,
+        // Id, trigger
+        pub triggers: Arc<Mutex<Vec<RegisteredShortcut>>>,
+        pub activations: Arc<Mutex<HashSet<String>>>,
     }
 
     #[glib::object_subclass]
@@ -115,7 +123,15 @@ impl GlobalShortcutsPage {
                 self.imp().shortcuts.set_editable(!response.is_ok());
                 match response {
                     Ok(resp) => {
-                        dbg!(resp);
+                        let triggers: Vec<_>
+                            = resp.shortcuts().iter()
+                            .map(|s: &Shortcut| RegisteredShortcut {
+                                id: s.id().into(),
+                                activation: s.trigger_description().into(),
+                            })
+                            .collect();
+                        *imp.triggers.lock().await = triggers;
+                        self.display_activations().await;
                         imp.session.lock().await.replace(session);
                         loop {
                             if imp.session.lock().await.is_none() {
@@ -182,26 +198,7 @@ impl GlobalShortcutsPage {
                 imp.response_group.set_visible(true);
             }
         };
-/*
-        let mut state = proxy.receive_state_changed().await?;
-        match state
-            .next()
-            .await
-            .expect("Stream exhausted")
-            .session_state()
-        {
-            SessionState::Running => tracing::info!("Session running"),
-            SessionState::QueryEnd => {
-                tracing::info!("Session: query end");
-                proxy.inhibit(&identifier, flags, &shortcuts).await?;
-                if let Some(session) = imp.session.lock().await.as_ref() {
-                    proxy.query_end_response(session).await?;
-                }
-            }
-            SessionState::Ending => {
-                tracing::info!("Ending the session");
-            }
-        }*/
+
         Ok(())
     }
 
@@ -220,28 +217,41 @@ impl GlobalShortcutsPage {
         }
         imp.response_group.set_visible(false);
         imp.activations_group.set_visible(false);
+        imp.activations.lock().await.clear();
+        imp.triggers.lock().await.clear();
     }
 
-    fn display_activations(&self, activations: &[String]) {
-        self.imp().activations_label.set_text(&activations.join(", "))
+    async fn display_activations(&self) {
+        let activations = self.imp().activations.lock().await.clone();
+        let triggers = self.imp().triggers.lock().await.clone();
+        let text: Vec<String> = triggers.into_iter()
+            .map(|RegisteredShortcut { id, activation }|
+                if activations.contains(&id) {
+                    format!("<b>{}: {}</b>", id, activation)
+                } else {
+                    format!("{}: {}", id, activation)
+                }
+            )
+            .collect();
+        self.imp().activations_label.set_markup(&text.join(", "))
     }
 
     async fn on_activated(&self, activation: Activated) {
-        let mut activations = self.imp().activations.lock().await;
-        let activations: &mut Vec<String> = activations.as_mut();
-        activations.push(activation.shortcut_id().into());
-        self.display_activations(activations);
+        {
+            let mut activations = self.imp().activations.lock().await;
+            activations.insert(activation.shortcut_id().into());
+        }
+        self.display_activations().await
     }
 
     async fn on_deactivated(&self, deactivation: Deactivated) {
-        let mut activations = self.imp().activations.lock().await;
-        let activations: &mut Vec<String> = activations.as_mut();
-        if let Some(idx) = activations.iter().position(|v| *v == deactivation.shortcut_id()) {
-            activations.remove(idx);
-        } else {
-            tracing::warn!("Received deactivation without previous activation: {:?}", deactivation);
+        {
+            let mut activations = self.imp().activations.lock().await;
+            if !activations.remove(deactivation.shortcut_id()) {
+                tracing::warn!("Received deactivation without previous activation: {:?}", deactivation);
+            }
         }
-        self.display_activations(activations);
+        self.display_activations().await
     }
     fn on_changed(&self, change: ShortcutsChanged) {
         dbg!(change);
