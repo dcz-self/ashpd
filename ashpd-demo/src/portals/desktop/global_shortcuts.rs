@@ -18,7 +18,7 @@ use futures_util::{
 use crate::widgets::{PortalPage, PortalPageImpl};
 
 #[derive(Debug, Clone)]
-struct RegisteredShortcut {
+pub struct RegisteredShortcut {
     id: String,
     activation: String,
 }
@@ -41,9 +41,11 @@ mod imp {
         pub activations_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub shortcuts_status_label: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub rebind_count_label: TemplateChild<gtk::Label>,
         pub session: Arc<Mutex<Option<Session<'static>>>>,
         pub abort_handle: Arc<Mutex<Option<AbortHandle>>>,
-        // Id, trigger
+        /// Id, trigger
         pub triggers: Arc<Mutex<Vec<RegisteredShortcut>>>,
         pub activations: Arc<Mutex<HashSet<String>>>,
     }
@@ -132,6 +134,7 @@ impl GlobalShortcutsPage {
                             .collect();
                         *imp.triggers.lock().await = triggers;
                         self.display_activations().await;
+                        self.imp().rebind_count_label.set_text("0");
                         imp.session.lock().await.replace(session);
                         loop {
                             if imp.session.lock().await.is_none() {
@@ -177,7 +180,7 @@ impl GlobalShortcutsPage {
                                                 self.on_deactivated(deactivation).await;
                                             },
                                             Event::ShortcutsChanged(change) => {
-                                                self.on_changed(change);
+                                                self.on_changed(change).await;
                                             },
                                         }
                                     }
@@ -217,6 +220,7 @@ impl GlobalShortcutsPage {
         }
         imp.response_group.set_visible(false);
         imp.activations_group.set_visible(false);
+        imp.rebind_count_label.set_text("");
         imp.activations.lock().await.clear();
         imp.triggers.lock().await.clear();
     }
@@ -225,15 +229,18 @@ impl GlobalShortcutsPage {
         let activations = self.imp().activations.lock().await.clone();
         let triggers = self.imp().triggers.lock().await.clone();
         let text: Vec<String> = triggers.into_iter()
-            .map(|RegisteredShortcut { id, activation }|
+            .map(|RegisteredShortcut { id, activation }| {
+                let escape = |s: &str| s.replace("<", "&lt;").replace(">", "&gt;");
+                let id = escape(&id);
+                let activation = escape(&activation);
                 if activations.contains(&id) {
                     format!("<b>{}: {}</b>", id, activation)
                 } else {
                     format!("{}: {}", id, activation)
                 }
-            )
+            })
             .collect();
-        self.imp().activations_label.set_markup(&text.join(", "))
+        self.imp().activations_label.set_markup(&text.join("\n"))
     }
 
     async fn on_activated(&self, activation: Activated) {
@@ -253,7 +260,20 @@ impl GlobalShortcutsPage {
         }
         self.display_activations().await
     }
-    fn on_changed(&self, change: ShortcutsChanged) {
-        dbg!(change);
+
+    async fn on_changed(&self, change: ShortcutsChanged) {
+        *self.imp().triggers.lock().await
+            = change.shortcuts().iter()
+                .map(|s| RegisteredShortcut{
+                    id: s.id().into(),
+                    activation: s.trigger_description().into(),
+                })
+                .collect();
+        let label = &self.imp().rebind_count_label;
+        label.set_text(&format!(
+            "{}",
+            label.text().parse::<u32>().unwrap_or(0) + 1
+        ));
+        self.display_activations().await
     }
 }

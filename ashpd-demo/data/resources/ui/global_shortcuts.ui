@@ -59,9 +59,19 @@
                 <child>
                   <object class="GtkLabel" id="activations_label">
                     <property name="valign">center</property>
-                    <style>
-                      <class name="dim-label" />
-                    </style>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwActionRow">
+                    <property name="title" translatable="yes">Binding changes count</property>
+                    <child>
+                      <object class="GtkLabel" id="rebind_count_label">
+                        <property name="valign">center</property>
+                        <style>
+                          <class name="dim-label" />
+                        </style>
+                      </object>
+                    </child>
                   </object>
                 </child>
               </object>
