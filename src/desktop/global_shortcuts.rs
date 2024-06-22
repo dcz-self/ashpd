@@ -232,7 +232,7 @@ impl<'a> GlobalShortcuts<'a> {
                 .into_future(),
             Session::from_unique_name(&options.session_handle_token).into_future(),
         )?;
-        assert_eq!(proxy.path(), &dbg!(request.response())?.session_handle.as_ref());
+        assert_eq!(proxy.path(), &request.response()?.session_handle.as_ref());
         Ok(proxy)
     }
 

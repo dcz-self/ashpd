@@ -11,59 +11,10 @@
             <child>
               <object class="AdwPreferencesGroup">
                 <property name="title" translatable="yes">Global Shortcuts</property>
-                <property name="description" translatable="yes">Space-separated list of shortcuts to request</property>
+                <property name="description" translatable="yes">Comma-separated list of shortcuts to request, in the form: "name:description:optional trigger"</property>
                 <child>
                   <object class="AdwEntryRow" id="shortcuts">
                     <property name="title" translatable="yes">Shortcuts</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-            <child>
-              <object class="AdwPreferencesGroup">
-                <property name="description" translatable="yes">Actions to inhibit that can end user's session</property>
-                <child>
-                  <object class="AdwActionRow">
-                    <property name="title" translatable="yes">Logout</property>
-                    <property name="activatable-widget">logout_check</property>
-                    <child>
-                      <object class="GtkCheckButton" id="logout_check">
-                        <property name="valign">center</property>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="AdwActionRow">
-                    <property name="title" translatable="yes">User Switch</property>
-                    <property name="activatable-widget">user_switch_check</property>
-                    <child>
-                      <object class="GtkCheckButton" id="user_switch_check">
-                        <property name="valign">center</property>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="AdwActionRow">
-                    <property name="title" translatable="yes">Suspend</property>
-                    <property name="activatable-widget">suspend_check</property>
-                    <child>
-                      <object class="GtkCheckButton" id="suspend_check">
-                        <property name="valign">center</property>
-                      </object>
-                    </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="AdwActionRow">
-                    <property name="title" translatable="yes">Idle</property>
-                    <property name="activatable-widget">idle_check</property>
-                    <child>
-                      <object class="GtkCheckButton" id="idle_check">
-                        <property name="valign">center</property>
-                      </object>
-                    </child>
                   </object>
                 </child>
               </object>
@@ -107,9 +58,9 @@
                 <property name="margin-top">24</property>
                 <child>
                   <object class="AdwActionRow">
-                    <property name="title" translatable="yes">Screensaver Status</property>
+                    <property name="title" translatable="yes">Shortcuts Status</property>
                     <child>
-                      <object class="GtkLabel" id="screensaver_status_label">
+                      <object class="GtkLabel" id="shortcuts_status_label">
                         <property name="valign">center</property>
                         <style>
                           <class name="dim-label" />
@@ -120,7 +71,7 @@
                 </child>
                 <child>
                   <object class="AdwActionRow">
-                    <property name="title" translatable="yes">Session State</property>
+                    <property name="title" translatable="yes">State</property>
                     <child>
                       <object class="GtkLabel" id="session_state_label">
                         <property name="valign">center</property>

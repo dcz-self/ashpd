@@ -4,6 +4,7 @@ use adw::subclass::prelude::*;
 use ashpd::{
     desktop::{
         global_shortcuts::{GlobalShortcuts, NewShortcut},
+        ResponseError,
         Session,
     },
     WindowIdentifier,
@@ -23,13 +24,9 @@ mod imp {
         #[template_child]
         pub response_group: TemplateChild<adw::PreferencesGroup>,
         #[template_child]
-        pub idle_check: TemplateChild<gtk::CheckButton>,
+        pub session_state_label: TemplateChild<gtk::Label>,
         #[template_child]
-        pub logout_check: TemplateChild<gtk::CheckButton>,
-        #[template_child]
-        pub user_switch_check: TemplateChild<gtk::CheckButton>,
-        #[template_child]
-        pub suspend_check: TemplateChild<gtk::CheckButton>,
+        pub shortcuts_status_label: TemplateChild<gtk::Label>,
         pub session: Arc<Mutex<Option<Session<'static>>>>,
     }
 
@@ -78,20 +75,41 @@ impl GlobalShortcutsPage {
         let imp = self.imp();
         let identifier = WindowIdentifier::from_native(&root).await;
         let shortcuts = imp.shortcuts.text();
-        let shortcuts: Vec<_> = shortcuts.as_str().split(' ')
+        let shortcuts: Option<Vec<_>> = shortcuts.as_str().split(',')
             .map(|desc| {
-                NewShortcut::new(desc, "")
+                let mut split = desc.splitn(3, ':');
+                let name = split.next()?;
+                let desc = split.next()?;
+                let trigger = split.next();
+                let mut s = NewShortcut::new(name, desc);
+                s.preferred_trigger(trigger);
+                Some(s)
             }).collect();
-
+        if let None = shortcuts {
+            return;
+        }
         let global_shortcuts = GlobalShortcuts::new().await?;
         println!("New");
         let session = global_shortcuts.create_session().await?;
         println!("created");
-        global_shortcuts.bind_shortcuts(&session, &shortcuts[..], &identifier).await?;
+        let request = global_shortcuts.bind_shortcuts(&session, &shortcuts[..], &identifier).await?;
         println!("bound");
-        imp.session.lock().await.replace(session);
-        self.action_set_enabled("global_shortcuts.stop", true);
-        self.action_set_enabled("global_shortcuts.start_session", false);
+        imp.response_group.set_visible(true);
+        let response = request.response();
+        imp.session_state_label.set_text(
+            &match &response {
+                Ok(_) => "OK".into(),
+                Err(ashpd::Error::Response(ResponseError::Cancelled)) => "Cancelled".into(),
+                Err(ashpd::Error::Response(ResponseError::Other)) => "Other response error".into(),
+                Err(e) => format!("{}", e),
+            }
+        );
+        if let Ok(resp) = response {
+            dbg!(resp);
+            imp.session.lock().await.replace(session);
+            self.action_set_enabled("global_shortcuts.stop", true);
+            self.action_set_enabled("global_shortcuts.start_session", false);
+        };
 /*
         let mut state = proxy.receive_state_changed().await?;
         match state
