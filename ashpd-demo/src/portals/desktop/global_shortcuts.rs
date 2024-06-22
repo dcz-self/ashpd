@@ -93,6 +93,7 @@ impl GlobalShortcutsPage {
                 let trigger = split.next();
                 Some(NewShortcut::new(name, desc).preferred_trigger(trigger))
             }).collect();
+
         match shortcuts {
             Some(shortcuts) => {
                 let global_shortcuts = GlobalShortcuts::new().await?;
@@ -111,66 +112,75 @@ impl GlobalShortcutsPage {
                 imp.activations_group.set_visible(response.is_ok());
                 self.action_set_enabled("global_shortcuts.stop", response.is_ok());
                 self.action_set_enabled("global_shortcuts.start_session", !response.is_ok());
-                if let Ok(resp) = response {
-                    dbg!(resp);
-                    imp.session.lock().await.replace(session);
-                    loop {
-                        if imp.session.lock().await.is_none() {
-                            break;
-                        }
+                self.imp().shortcuts.set_editable(!response.is_ok());
+                match response {
+                    Ok(resp) => {
+                        dbg!(resp);
+                        imp.session.lock().await.replace(session);
+                        loop {
+                            if imp.session.lock().await.is_none() {
+                                break;
+                            }
 
-                        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-                        let future = Abortable::new(
-                            async {
-                                enum Event {
-                                    Activated(Activated),
-                                    Deactivated(Deactivated),
-                                    ShortcutsChanged(ShortcutsChanged),
-                                }
-
-                                let Ok(activated_stream) = global_shortcuts.receive_activated().await
-                                else {
-                                    return;
-                                };
-                                let Ok(deactivated_stream) = global_shortcuts.receive_deactivated().await
-                                else {
-                                    return;
-                                };
-                                let Ok(changed_stream) = global_shortcuts.receive_shortcuts_changed().await
-                                else {
-                                    return;
-                                };
-
-                                let bact: Box<dyn Stream<Item=Event> + Unpin> = Box::new(activated_stream.map(Event::Activated));
-                                let bdeact: Box<dyn Stream<Item=Event> + Unpin> = Box::new(deactivated_stream.map(Event::Deactivated));
-                                let bchg: Box<dyn Stream<Item=Event> + Unpin> = Box::new(changed_stream.map(Event::ShortcutsChanged));
-
-                                let mut events = select_all([
-                                    bact, bdeact, bchg,
-                                ]);
-
-                                while let Some(event) = events.next().await {
-                                    match event {
-                                        Event::Activated(activation) => {
-                                            self.on_activated(activation).await;
-                                        },
-                                        Event::Deactivated(deactivation) => {
-                                            self.on_deactivated(deactivation).await;
-                                        },
-                                        Event::ShortcutsChanged(change) => {
-                                            self.on_changed(change);
-                                        },
+                            let (abort_handle, abort_registration) = AbortHandle::new_pair();
+                            let future = Abortable::new(
+                                async {
+                                    enum Event {
+                                        Activated(Activated),
+                                        Deactivated(Deactivated),
+                                        ShortcutsChanged(ShortcutsChanged),
                                     }
-                                }
-                            },
-                            abort_registration,
-                        );
-                        imp.abort_handle.lock().await.replace(abort_handle);
-                        let _ = future.await;
+
+                                    let Ok(activated_stream) = global_shortcuts.receive_activated().await
+                                    else {
+                                        return;
+                                    };
+                                    let Ok(deactivated_stream) = global_shortcuts.receive_deactivated().await
+                                    else {
+                                        return;
+                                    };
+                                    let Ok(changed_stream) = global_shortcuts.receive_shortcuts_changed().await
+                                    else {
+                                        return;
+                                    };
+
+                                    let bact: Box<dyn Stream<Item=Event> + Unpin> = Box::new(activated_stream.map(Event::Activated));
+                                    let bdeact: Box<dyn Stream<Item=Event> + Unpin> = Box::new(deactivated_stream.map(Event::Deactivated));
+                                    let bchg: Box<dyn Stream<Item=Event> + Unpin> = Box::new(changed_stream.map(Event::ShortcutsChanged));
+
+                                    let mut events = select_all([
+                                        bact, bdeact, bchg,
+                                    ]);
+
+                                    while let Some(event) = events.next().await {
+                                        match event {
+                                            Event::Activated(activation) => {
+                                                self.on_activated(activation).await;
+                                            },
+                                            Event::Deactivated(deactivation) => {
+                                                self.on_deactivated(deactivation).await;
+                                            },
+                                            Event::ShortcutsChanged(change) => {
+                                                self.on_changed(change);
+                                            },
+                                        }
+                                    }
+                                },
+                                abort_registration,
+                            );
+                            imp.abort_handle.lock().await.replace(abort_handle);
+                            let _ = future.await;
+                        }
+                    },
+                    Err(e) => {
+                        tracing::warn!("Failure {:?}", e);
                     }
-                };
+                }
+            },
+            _ => {
+                imp.session_state_label.set_text("Shortcut list invalid");
+                imp.response_group.set_visible(true);
             }
-            _ => {}
         };
 /*
         let mut state = proxy.receive_state_changed().await?;
@@ -199,6 +209,7 @@ impl GlobalShortcutsPage {
         let imp = self.imp();
         self.action_set_enabled("global_shortcuts.stop", false);
         self.action_set_enabled("global_shortcuts.start_session", true);
+        self.imp().shortcuts.set_editable(true);
 
         if let Some(abort_handle) = self.imp().abort_handle.lock().await.take() {
             abort_handle.abort();
@@ -207,6 +218,8 @@ impl GlobalShortcutsPage {
         if let Some(session) = imp.session.lock().await.take() {
             let _ = session.close().await;
         }
+        imp.response_group.set_visible(false);
+        imp.activations_group.set_visible(false);
     }
 
     fn display_activations(&self, activations: &[String]) {
