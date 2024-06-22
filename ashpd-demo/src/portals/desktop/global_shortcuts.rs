@@ -39,15 +39,9 @@ mod imp {
         #[template_child]
         pub shortcuts: TemplateChild<adw::EntryRow>,
         #[template_child]
-        pub response_group: TemplateChild<adw::PreferencesGroup>,
-        #[template_child]
-        pub session_state_label: TemplateChild<gtk::Label>,
-        #[template_child]
         pub activations_group: TemplateChild<adw::PreferencesGroup>,
         #[template_child]
         pub activations_label: TemplateChild<gtk::Label>,
-        #[template_child]
-        pub shortcuts_status_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub rebind_count_label: TemplateChild<gtk::Label>,
         pub rebind_count: Arc<Mutex<u32>>,
@@ -116,16 +110,14 @@ impl GlobalShortcutsPage {
                 let global_shortcuts = GlobalShortcuts::new().await?;
                 let session = global_shortcuts.create_session().await?;
                 let request = global_shortcuts.bind_shortcuts(&session, &shortcuts[..], &identifier).await?;
-                imp.response_group.set_visible(true);
                 let response = request.response();
-                imp.session_state_label.set_text(
-                    &match &response {
-                        Ok(_) => "OK".into(),
-                        Err(ashpd::Error::Response(ResponseError::Cancelled)) => "Cancelled".into(),
-                        Err(ashpd::Error::Response(ResponseError::Other)) => "Other response error".into(),
-                        Err(e) => format!("{}", e),
-                    }
-                );
+                if let Err(e) = &response {
+                    self.error(&match e {
+                        ashpd::Error::Response(ResponseError::Cancelled) => "Cancelled".into(),
+                        ashpd::Error::Response(ResponseError::Other) => "Other response error".into(),
+                        other => format!("{}", other),
+                    })
+                };
                 imp.activations_group.set_visible(response.is_ok());
                 self.action_set_enabled("global_shortcuts.stop", response.is_ok());
                 self.action_set_enabled("global_shortcuts.start_session", !response.is_ok());
@@ -228,7 +220,6 @@ impl GlobalShortcutsPage {
         if let Some(session) = imp.session.lock().await.take() {
             let _ = session.close().await;
         }
-        imp.response_group.set_visible(false);
         imp.activations_group.set_visible(false);
         self.set_rebind_count(None);
         imp.activations.lock().await.clear();
