@@ -135,8 +135,8 @@ impl GlobalShortcutsPage {
                         let triggers: Vec<_>
                             = resp.shortcuts().iter()
                             .map(|s: &Shortcut| RegisteredShortcut {
-                                id: s.id().into(),
-                                activation: s.trigger_description().into(),
+                                id: s.id().to_owned(),
+                                activation: s.trigger_description().to_owned(),
                             })
                             .collect();
                         *imp.triggers.lock().await = triggers;
@@ -269,8 +269,8 @@ impl GlobalShortcutsPage {
         *self.imp().triggers.lock().await
             = change.shortcuts().iter()
                 .map(|s| RegisteredShortcut{
-                    id: s.id().into(),
-                    activation: s.trigger_description().into(),
+                    id: s.id().to_owned(),
+                    activation: s.trigger_description().to_owned(),
                 })
                 .collect();
         let label = &self.imp().rebind_count_label;
