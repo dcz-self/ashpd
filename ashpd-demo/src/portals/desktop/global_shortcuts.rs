@@ -17,6 +17,13 @@ use futures_util::{
 };
 use crate::widgets::{PortalPage, PortalPageImpl};
 
+#[derive(Debug)]
+enum Event {
+    Activated(Activated),
+    Deactivated(Deactivated),
+    ShortcutsChanged(ShortcutsChanged),
+}
+
 #[derive(Debug, Clone)]
 pub struct RegisteredShortcut {
     id: String,
@@ -143,48 +150,7 @@ impl GlobalShortcutsPage {
 
                             let (abort_handle, abort_registration) = AbortHandle::new_pair();
                             let future = Abortable::new(
-                                async {
-                                    enum Event {
-                                        Activated(Activated),
-                                        Deactivated(Deactivated),
-                                        ShortcutsChanged(ShortcutsChanged),
-                                    }
-
-                                    let Ok(activated_stream) = global_shortcuts.receive_activated().await
-                                    else {
-                                        return;
-                                    };
-                                    let Ok(deactivated_stream) = global_shortcuts.receive_deactivated().await
-                                    else {
-                                        return;
-                                    };
-                                    let Ok(changed_stream) = global_shortcuts.receive_shortcuts_changed().await
-                                    else {
-                                        return;
-                                    };
-
-                                    let bact: Box<dyn Stream<Item=Event> + Unpin> = Box::new(activated_stream.map(Event::Activated));
-                                    let bdeact: Box<dyn Stream<Item=Event> + Unpin> = Box::new(deactivated_stream.map(Event::Deactivated));
-                                    let bchg: Box<dyn Stream<Item=Event> + Unpin> = Box::new(changed_stream.map(Event::ShortcutsChanged));
-
-                                    let mut events = select_all([
-                                        bact, bdeact, bchg,
-                                    ]);
-
-                                    while let Some(event) = events.next().await {
-                                        match event {
-                                            Event::Activated(activation) => {
-                                                self.on_activated(activation).await;
-                                            },
-                                            Event::Deactivated(deactivation) => {
-                                                self.on_deactivated(deactivation).await;
-                                            },
-                                            Event::ShortcutsChanged(change) => {
-                                                self.on_changed(change).await;
-                                            },
-                                        }
-                                    }
-                                },
+                                self.track_incoming_events(&global_shortcuts),
                                 abort_registration,
                             );
                             imp.abort_handle.lock().await.replace(abort_handle);
@@ -203,6 +169,44 @@ impl GlobalShortcutsPage {
         };
 
         Ok(())
+    }
+
+
+    async fn track_incoming_events(&self, global_shortcuts: &GlobalShortcuts<'_>) {
+        let Ok(activated_stream) = global_shortcuts.receive_activated().await
+        else {
+            return;
+        };
+        let Ok(deactivated_stream) = global_shortcuts.receive_deactivated().await
+        else {
+            return;
+        };
+        let Ok(changed_stream) = global_shortcuts.receive_shortcuts_changed().await
+        else {
+            return;
+        };
+
+        let bact: Box<dyn Stream<Item=Event> + Unpin> = Box::new(activated_stream.map(Event::Activated));
+        let bdeact: Box<dyn Stream<Item=Event> + Unpin> = Box::new(deactivated_stream.map(Event::Deactivated));
+        let bchg: Box<dyn Stream<Item=Event> + Unpin> = Box::new(changed_stream.map(Event::ShortcutsChanged));
+
+        let mut events = select_all([
+            bact, bdeact, bchg,
+        ]);
+
+        while let Some(event) = events.next().await {
+            match event {
+                Event::Activated(activation) => {
+                    self.on_activated(activation).await;
+                },
+                Event::Deactivated(deactivation) => {
+                    self.on_deactivated(deactivation).await;
+                },
+                Event::ShortcutsChanged(change) => {
+                    self.on_changed(change).await;
+                },
+            }
+        }
     }
 
     async fn stop(&self) {
