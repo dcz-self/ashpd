@@ -103,14 +103,14 @@
                         </child>
                         <child>
                           <object class="SidebarRow">
-                            <property name="title" translatable="yes">Inhibit</property>
-                            <property name="page-name">inhibit</property>
+                            <property name="title" translatable="yes">Global Shortcuts</property>
+                            <property name="page-name">global_shortcuts</property>
                           </object>
                         </child>
                         <child>
                           <object class="SidebarRow">
-                            <property name="title" translatable="yes">Global Shortcuts</property>
-                            <property name="page-name">global_shortcuts</property>
+                            <property name="title" translatable="yes">Inhibit</property>
+                            <property name="page-name">inhibit</property>
                           </object>
                         </child>
                         <child>
