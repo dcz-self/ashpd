@@ -15,7 +15,7 @@ use futures_util::{
     lock::Mutex,
     stream::{select_all, Stream, StreamExt},
 };
-use crate::widgets::{PortalPage, PortalPageImpl};
+use crate::widgets::{PortalPage, PortalPageExt, PortalPageImpl};
 
 #[derive(Debug)]
 enum Event {
@@ -93,7 +93,7 @@ mod imp {
 
 glib::wrapper! {
     pub struct GlobalShortcutsPage(ObjectSubclass<imp::GlobalShortcutsPage>)
-        @extends gtk::Widget, adw::Bin;
+        @extends gtk::Widget, adw::Bin, PortalPage;
 }
 
 impl GlobalShortcutsPage {
@@ -163,8 +163,7 @@ impl GlobalShortcutsPage {
                 }
             },
             _ => {
-                imp.session_state_label.set_text("Shortcut list invalid");
-                imp.response_group.set_visible(true);
+                self.error("Shortcut list invalid");
             }
         };
 
@@ -241,7 +240,7 @@ impl GlobalShortcutsPage {
         let triggers = self.imp().triggers.lock().await.clone();
         let text: Vec<String> = triggers.into_iter()
             .map(|RegisteredShortcut { id, activation }| {
-                let escape = |s: &str| s.replace("<", "&lt;").replace(">", "&gt;");
+                let escape = |s: &str| glib::markup_escape_text(s).to_string();
                 let id = escape(&id);
                 let activation = escape(&activation);
                 if activations.contains(&id) {
