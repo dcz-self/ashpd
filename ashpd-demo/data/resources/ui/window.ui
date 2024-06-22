@@ -311,7 +311,7 @@
                           <object class="GtkStackPage">
                             <property name="name">remote_desktop</property>
                             <property name="child">
-                              <object class="RemoteDesktopPage" id="remote_desktop" />
+                              <object class="PrintPage" id="remote_desktop" />
                             </property>
                           </object>
                         </child>
@@ -327,7 +327,7 @@
                           <object class="GtkStackPage">
                             <property name="name">screencast</property>
                             <property name="child">
-                              <object class="ScreenCastPage" id="screencast" />
+                              <object class="PrintPage" id="screencast" />
                             </property>
                           </object>
                         </child>

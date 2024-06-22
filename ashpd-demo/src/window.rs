@@ -13,7 +13,7 @@ use crate::{
         desktop::{
             AccountPage, BackgroundPage, CameraPage, DevicePage, DynamicLauncherPage, EmailPage,
             FileChooserPage, InhibitPage, GlobalShortcutsPage, LocationPage, NetworkMonitorPage, NotificationPage,
-            OpenUriPage, PrintPage, ProxyResolverPage, RemoteDesktopPage, ScreenCastPage,
+            OpenUriPage, PrintPage, ProxyResolverPage, //RemoteDesktopPage, ScreenCastPage,
             ScreenshotPage, SecretPage, WallpaperPage,
         },
         DocumentsPage,
@@ -51,7 +51,7 @@ mod imp {
         #[template_child]
         pub notification: TemplateChild<NotificationPage>,
         #[template_child]
-        pub screencast: TemplateChild<ScreenCastPage>,
+        pub screencast: TemplateChild<PrintPage>,
         #[template_child]
         pub account: TemplateChild<AccountPage>,
         #[template_child]
@@ -67,7 +67,7 @@ mod imp {
         #[template_child]
         pub secret: TemplateChild<SecretPage>,
         #[template_child]
-        pub remote_desktop: TemplateChild<RemoteDesktopPage>,
+        pub remote_desktop: TemplateChild<PrintPage>,
         #[template_child]
         pub print: TemplateChild<PrintPage>,
         #[template_child]
