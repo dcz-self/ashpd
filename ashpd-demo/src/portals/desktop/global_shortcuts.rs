@@ -37,6 +37,7 @@ mod imp {
         pub shortcuts_status_label: TemplateChild<gtk::Label>,
         pub session: Arc<Mutex<Option<Session<'static>>>>,
         pub abort_handle: Arc<Mutex<Option<AbortHandle>>>,
+        pub activations: Arc<Mutex<Vec<String>>>,
     }
 
     #[glib::object_subclass]
@@ -151,10 +152,10 @@ impl GlobalShortcutsPage {
                                 while let Some(event) = events.next().await {
                                     match event {
                                         Event::Activated(activation) => {
-                                            self.on_activated(activation);
+                                            self.on_activated(activation).await;
                                         },
                                         Event::Deactivated(deactivation) => {
-                                            self.on_deactivated(deactivation);
+                                            self.on_deactivated(deactivation).await;
                                         },
                                         Event::ShortcutsChanged(change) => {
                                             self.on_changed(change);
@@ -208,12 +209,26 @@ impl GlobalShortcutsPage {
         }
     }
 
-    fn on_activated(&self, activation: Activated) {
-        dbg!(activation);
+    fn display_activations(&self, activations: &[String]) {
+        self.imp().activations_label.set_text(&activations.join(", "))
     }
 
-    fn on_deactivated(&self, deactivation: Deactivated) {
-        dbg!(deactivation);
+    async fn on_activated(&self, activation: Activated) {
+        let mut activations = self.imp().activations.lock().await;
+        let activations: &mut Vec<String> = activations.as_mut();
+        activations.push(activation.shortcut_id().into());
+        self.display_activations(activations);
+    }
+
+    async fn on_deactivated(&self, deactivation: Deactivated) {
+        let mut activations = self.imp().activations.lock().await;
+        let activations: &mut Vec<String> = activations.as_mut();
+        if let Some(idx) = activations.iter().position(|v| *v == deactivation.shortcut_id()) {
+            activations.remove(idx);
+        } else {
+            tracing::warn!("Received deactivation without previous activation: {:?}", deactivation);
+        }
+        self.display_activations(activations);
     }
     fn on_changed(&self, change: ShortcutsChanged) {
         dbg!(change);
