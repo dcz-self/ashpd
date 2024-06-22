@@ -50,9 +50,9 @@ mod imp {
         pub shortcuts_status_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub rebind_count_label: TemplateChild<gtk::Label>,
+        pub rebind_count: Arc<Mutex<u32>>,
         pub session: Arc<Mutex<Option<Session<'static>>>>,
         pub abort_handle: Arc<Mutex<Option<AbortHandle>>>,
-        /// Id, trigger
         pub triggers: Arc<Mutex<Vec<RegisteredShortcut>>>,
         pub activations: Arc<Mutex<HashSet<String>>>,
     }
@@ -141,7 +141,7 @@ impl GlobalShortcutsPage {
                             .collect();
                         *imp.triggers.lock().await = triggers;
                         self.display_activations().await;
-                        self.imp().rebind_count_label.set_text("0");
+                        self.set_rebind_count(Some(0));
                         imp.session.lock().await.replace(session);
                         loop {
                             if imp.session.lock().await.is_none() {
@@ -171,6 +171,13 @@ impl GlobalShortcutsPage {
         Ok(())
     }
 
+    fn set_rebind_count(&self, count: Option<u32>) {
+        let label = &self.imp().rebind_count_label;
+        match count {
+            None => label.set_text(""),
+            Some(count) => label.set_text(&format!("{}", count)),
+        }
+    }
 
     async fn track_incoming_events(&self, global_shortcuts: &GlobalShortcuts<'_>) {
         let Ok(activated_stream) = global_shortcuts.receive_activated().await
@@ -224,7 +231,7 @@ impl GlobalShortcutsPage {
         }
         imp.response_group.set_visible(false);
         imp.activations_group.set_visible(false);
-        imp.rebind_count_label.set_text("");
+        self.set_rebind_count(None);
         imp.activations.lock().await.clear();
         imp.triggers.lock().await.clear();
     }
@@ -273,11 +280,8 @@ impl GlobalShortcutsPage {
                     activation: s.trigger_description().to_owned(),
                 })
                 .collect();
-        let label = &self.imp().rebind_count_label;
-        label.set_text(&format!(
-            "{}",
-            label.text().parse::<u32>().unwrap_or(0) + 1
-        ));
+        *self.imp().rebind_count.lock().await += 1;
+        self.set_rebind_count(Some(*self.imp().rebind_count.lock().await));
         self.display_activations().await
     }
 }
