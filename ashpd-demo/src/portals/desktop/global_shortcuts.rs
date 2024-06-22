@@ -81,34 +81,34 @@ impl GlobalShortcutsPage {
                 let name = split.next()?;
                 let desc = split.next()?;
                 let trigger = split.next();
-                let mut s = NewShortcut::new(name, desc);
-                s.preferred_trigger(trigger);
-                Some(s)
+                Some(NewShortcut::new(name, desc).preferred_trigger(trigger))
             }).collect();
-        if let None = shortcuts {
-            return;
-        }
-        let global_shortcuts = GlobalShortcuts::new().await?;
-        println!("New");
-        let session = global_shortcuts.create_session().await?;
-        println!("created");
-        let request = global_shortcuts.bind_shortcuts(&session, &shortcuts[..], &identifier).await?;
-        println!("bound");
-        imp.response_group.set_visible(true);
-        let response = request.response();
-        imp.session_state_label.set_text(
-            &match &response {
-                Ok(_) => "OK".into(),
-                Err(ashpd::Error::Response(ResponseError::Cancelled)) => "Cancelled".into(),
-                Err(ashpd::Error::Response(ResponseError::Other)) => "Other response error".into(),
-                Err(e) => format!("{}", e),
+        match shortcuts {
+            Some(shortcuts) => {
+                let global_shortcuts = GlobalShortcuts::new().await?;
+                println!("New");
+                let session = global_shortcuts.create_session().await?;
+                println!("created");
+                let request = global_shortcuts.bind_shortcuts(&session, &shortcuts[..], &identifier).await?;
+                println!("bound");
+                imp.response_group.set_visible(true);
+                let response = request.response();
+                imp.session_state_label.set_text(
+                    &match &response {
+                        Ok(_) => "OK".into(),
+                        Err(ashpd::Error::Response(ResponseError::Cancelled)) => "Cancelled".into(),
+                        Err(ashpd::Error::Response(ResponseError::Other)) => "Other response error".into(),
+                        Err(e) => format!("{}", e),
+                    }
+                );
+                if let Ok(resp) = response {
+                    dbg!(resp);
+                    imp.session.lock().await.replace(session);
+                    self.action_set_enabled("global_shortcuts.stop", true);
+                    self.action_set_enabled("global_shortcuts.start_session", false);
+                };
             }
-        );
-        if let Ok(resp) = response {
-            dbg!(resp);
-            imp.session.lock().await.replace(session);
-            self.action_set_enabled("global_shortcuts.stop", true);
-            self.action_set_enabled("global_shortcuts.start_session", false);
+            _ => {}
         };
 /*
         let mut state = proxy.receive_state_changed().await?;
